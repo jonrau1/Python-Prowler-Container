@@ -16,6 +16,7 @@ Created a minimalist Dockerfile with AWS CLI Credentials and ENV Variables that 
 - Navigate to Elastic Container Registry
 - `Create Repository`
     - Give a unique name, can use Namespace via <Namespace>/<ECR_REPO_NAME>
+- Clone this Repo for the next step
 - `View Push Commands`
     - Follow the commands wherever you build Docker Images -- feel free to modify `Docker Build` as per your normal process (i.e. --no-cache, etc)
 
