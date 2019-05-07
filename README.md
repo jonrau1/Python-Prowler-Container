@@ -9,13 +9,21 @@ Created a minimalist Dockerfile with AWS CLI Credentials and ENV Variables that 
 - Simple Notification Server (SNS)
 - CloudWatch Events
 - Virtual Private Cloud (VPC)
-- Secrets Manager
-- Systems Manager Paramater Store
+- PrivateLink (VPC Gateway & Interface Endpoints)
+- Secrets Manager (ASM)
+- Systems Manager Paramater Store (SSM-PS)
 - Key Management Service (KMS)
 - Identity & Access Management (IAM)
 
 ## Solutions Architecture
-![ArchitectureDiagram](https://github.com/jonrau1/Python-Prowler-Container/blob/master/Architecture-Diagram.jpg)
+![ArchitectureDiagram](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Architecture-Diagram.jpg)
+- Prowler will run in Fargate on ECS with `awsvpc` mode -- place in one of 3 possible Private Subnets (for US-East-1)
+    - Logs are Passed to CloudWatch Logs via `awslogs` logs configuration
+    - Secrets & Bucket Information Injected into Container via ASM & SSM-PS
+    - Docker Image pulled down from ECR
+- Task Scheduling is done via a Cron-expressed CloudWatch Event Rule
+- VPC Endpoints for ECR, CloudWatch Events and S3 are provided for non-Internet Routeable Service Communications
+- Artifacts are saved into a S3 Bucket, and an Event is created to send notifcations to a SNS Topic
 
 ## Getting Started
 
