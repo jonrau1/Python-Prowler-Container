@@ -1,14 +1,21 @@
 # Python-Prowler-Container
 #### Run Prowler on ECS Fargate for AWS Security & Compliance Checks
-Created a minimalist Dockerfile with AWS CLI Credentials and ENV Variables that can be securely passed to the container from ECS Task Definitions via AWS Secrets Manager. For more information on Prowler, refer to https://github.com/toniblyx/prowler. Only basic ./prowler check is used, modify as per your needs to use Custom/GDPR/HIPAA checks. Reports will be written out in HTML format using ansi2html, and will be uploaded to a S3 Bucket.
+Created a minimalist Dockerfile with AWS CLI Credentials and ENV Variables that can be securely passed to the container from ECS Task Definitions via AWS Secrets Manager. For more information on Prowler, refer to https://github.com/toniblyx/prowler. Only basic ./prowler check is used, modify as per your needs to use Custom/GDPR/HIPAA checks. Reports will be written out in HTML format using ansi2html, and will be uploaded to a S3 Bucket. The supporting Infrastructure is provisioned in an immutable and declarative fashion by Terraform.
 
 ## AWS Services Used
-- Elastic Container Service (ECS)
+- Elastic Container Service - Fargate (ECS) 
 - Elastic Container Registry (ECR)
+- Simple Storage Service (S3)
+- Simple Notification Server (SNS)
+- CloudWatch Events
 - Virtual Private Cloud (VPC)
-- Secrets Manager (ASM)
+- Secrets Manager
+- Systems Manager Paramater Store
 - Key Management Service (KMS)
 - Identity & Access Management (IAM)
+
+## Solutions Architecture
+![ArchitectureDiagram](https://github.com/jonrau1/Python-Prowler-Container/blob/master/Architecture-Diagram.jpg)
 
 ## Getting Started
 
