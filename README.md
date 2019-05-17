@@ -23,69 +23,82 @@ Created a minimalist Dockerfile with AWS CLI Credentials and ENV Variables that 
     - Docker Image pulled down from ECR
 - Task Scheduling is done via a Cron-expressed CloudWatch Event Rule
 - VPC Endpoints for ECR, CloudWatch Events and S3 are provided for non-Internet Routeable Service Communications
-- Artifacts are saved into a S3 Bucket, and an Event is created to send notifcations to a SNS Topic
+- Artifacts are saved into a S3 Bucket, and a S3 Event publishes notifcations to a SNS Topic
 
-## Getting Started
+## Deploying Via Terraform
+#### NOTE: This Readme will talk through steps as you would do them on a brand new Ubuntu 18.04LTS EC2 Linux Instance, please ignore / modify based on your preferred deployment environment / mechanism ####
 
-### Create ECR Repository & Push Image
-- Navigate to Elastic Container Registry
-- `Create Repository`
-    - Give a unique name, can use Namespace via <Namespace>/<ECR_REPO_NAME>
-- Clone this Repo for the next step
-- `View Push Commands`
-    - Follow the commands wherever you build Docker Images -- feel free to modify `Docker Build` as per your normal process (i.e. --no-cache, etc)
+### Setup Deployment Environment
+1. Create & Update Instance, Install Dependencies and Clone this Repository
+```
+#!/bin/bash
+apt-get update
+apt-get upgrade -y
+apt-get install -y docker.io
+apt-get install -y unzip
+git clone https://github.com/jonrau1/Python-Prowler-Container.git
+wget https://releases.hashicorp.com/terraform/0.11.13/terraform_0.11.13_linux_amd64.zip
+unzip terraform_0.11.13_linux_amd64.zip
+mv terraform /usr/local/bin/
+```
+2. Create ECR Repository, Build & Push Docker Image
+- Navigate to Compute > ECR
+- Choose `Create Repository`
+- Give a unique name, include a namespace if desired
+    - You can highlight your new created Repository for Push Commands
+- In your instance, issue the following commands to Login to ECR, Build, Tag & Push (replace Account Number and Region as needed)
+```
+cd ~/Python-Prowler-Container
+sudo su
+$(aws ecr get-login --no-include-email --region <AWS_REGION>)
+docker build -t <REPOSITORY_NAME> .
+docker tag <REPOSITORY_NAME>:latest <ACCOUNT_NUMBER>.dkr.ecr.<AWS_REGION>.amazonaws.com/<REPOSITORY_NAME>:latest
+docker push <ACCOUNT_NUMBER>.dkr.ecr.<AWS_REGION>.amazonaws.com/<REPOSITORY_NAME>:latest
+```
 
-### Create S3 Bucket for HTML Prowler Reports
-- Use a DNS Compliant Name
-- Specify encryption & versioning, at a minimum
+### Configure Terraform & Deploy Infrastructure
+1. Ensure your Instance has an EC2 Role attached to it that has write permissions for at least the Services listed in the `Services Used` Section Above
+    - For more information refer to: https://www.terraform.io/docs/providers/aws/index.html#ec2-role
+2. Navigate to the Terraform Scripts Sub-Directory `cd Python-Prowler-Container/terraform`
+3. Initialize Terraform to download latest AWS Provider `terraform init`
+4. Fill out Variables file `nano variables.tf`
+5. Attempt a Terraform Plan, this may fail and tell you to re-initalize Terraform to facilitate downloading a generic Provider for the `Random Shuffle` Resource `terraform plan && terraform init`
+6. Apply your Infrastructure - this may take a few minutes to create NAT Gateway && VPC Endpoint Interfaces `terraform apply`
 
-### Create ECS Cluster
-- Navigate to ECS, Choose Cluster
-- `Create Cluster`
-    - Choose Networking Only
-- Note on VPCs
-    - For best network security ensure you use Private Subnets with VPC Endpoints & NATGW
-        - For Fargate use VPC Interace Endpoint for com.amazonaws.region.ecr.dkr as well as a VPC Gateway Endpoint for S3 (https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html#ecr-vpc-endpoint-considerations)
-        - Your SG you associate with the Fargate Task must have 443 open to use the VPC Endpoints
+### Retrieve IAM Credentials & Store Keys
+1. Navigate to IAM Console > Users and find the IAM User you created via Terraform
+2. Generate Access Keys in the Security Credentials section, save the CSV or copy out the Secret Access Key somewhere safe
+![IAMCreds](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/IAM_Creds.jpg)
+3. Navigate to the Secrets Manager and find the Secret repositories you created via Terraform
+4. (Repeat these steps for each Secret)
+    - Select the Secret
+    - Scroll down to Secret Value > Get Secret Value > Set Secret Value
+    ![SetSecretValue](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Set_Secret_Value.jpg)
+    - Select the `Plaintext` format and simply paste in your Secret(s)
+    ![PlaintextSecret](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Plaintext_Secret.jpg)
 
-### Generate IAM Progammatic Access Keys & Pass to AWS Secrets Manager
-*At a minimum Prowler will need AWS Credentials with Security Audit Policy Permissions -- see https://github.com/toniblyx/prowler for details*
-- Generate Access Key & Secret Access Key, save CSV or copy out Secret Access Key somewhere safe
-- Navigate to AWS Secrets Manager & Create Secrets
-    - Choose `plaintext` instead of `key-value pair`
-    - Create a Secret per Access Key and Secret Access Key
+### Subscribe to Topic
+1. Navigate to SNS and Find your Topic
+2. Create Subscription - Email, HTTP, etc 
+![CreateSubscription](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Create_Subscription.jpg)
+3. Confirm your Subscription to ensure you get alerts whenever the Prowler HTML file is written to your S3 Bucket
 
-### Create ECS Task Definitions
-- Choose Fargate
-- Enter a name and choose a Task Role with at least the Security Audit Policy attached
-- Have ECS Create the `ecsTaskExecutionRole` if you do not have it already
-    - Attach a Policy that has access to KMS:Decrypt and SecretsManager:GetSecretValue
-        - You can specify the ARNs of your Two Secrets in Resources of this new Policy
-- Specify Task Memory and Task vCPU (I Use 3GB & 1vCPU)
-- Under Container Definitions choose `Add container`
-    - Choose a Unique Name
-    - For the Image, copy the URI Path from your ECR Repository
-    - Scroll down the `Environment variables` and add the following (this will be in the order of Key, ValueSelection, Value)
-        - AWS_ACCESS_KEY_ID - ValueFrom - ARN of your Access Key Secret
-        - AWS_SECRET_ACCESS_KEY - ValueFrom - ARN of your Secret Access Key Secret
-        - S3_REPORTS_BUCKET - Value - Name of your S3 Bucket
-- `Create`
-
-### Run ECS Task
-- Select your Task Definition and from the `Actions` dropdown select `Run Task`
-    - Choose Fargate Launch Type
-    - Choose your ECS Cluster
-    - Specify you VPC, Subnet and Security Groups
-    - `Run Task`
-- Logs will not show up except for some small warnings from Prowler bash scripts and ansi2html -- takes around 7 minutes to complete the basic checks
+### Run Prowler Task
+**NOTE** The first run task by the Event will fail due to the Secrets in ASM not being available, so you will have to manually run it the first time
+1. Navigate to ECS > Task Definitions
+2. Find the latest revision of your Task (it may be in Rev2 due to the way Terraform provisions resources),  Select Run Task from the Actions dropdown
+![RunTask](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Run_Task.jpg)
+3. In the Run Task Screen, configure the following options
+    - Launch Type = Fargate
+    - Platform Version = Latest
+    - Cluster = Your Terraform'ed Cluster Name
+    - Number of Tasks = 1
+    - Cluster VPC = Your Terraform'ed VPC Name
+    - Subnets = Any Private Subnet
+    - Security groups = Your Terraform'ed Security Group
+    - Auto-assign Public IP = Disabled
+![LaunchTask](https://github.com/jonrau1/Python-Prowler-Container/blob/master/pictures/Launch_Task.jpg)
 
 ## Next Steps
 
-### ChatOps
-You can create Event Source Invocations from S3 into SNS to alert Slack/SMS/Email that a new report is available
-
-### Scheduling Tasks
-You can schedule your ECS Task running Prowler in your Cluster (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/scheduled_tasks.html) allowing you to automate weekly/bi-weekly/etc Prowler reports as per your regulatory and compliance requirements
-
-### Terraformed!
-Will be adding some support in my main project (https://github.com/jonrau1/AWS-ComplianceMachineDontStop) for this, to include creating most (if not all, except the secrets themselves) resources needed for this project
+Feel free to Modify the Dockerfile to change the type of Prowler scan being run, or to modify any variables to conform to any naming standards by your organization.
